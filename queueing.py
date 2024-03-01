@@ -19,8 +19,7 @@ def gg1_step(curr_state, qa, qf):
 			return curr_state
 	else:
 		# 0,1,2 -> -1, 0, 1 after subtracting 1
-		step_addon = np.random.choice(a=3, p=[qf*(1-qa), qa*qf+(1-qa)*(1-qf),
-											  qa*(1-qf)])-1
+		step_addon = np.random.choice(a=3, p=[qf*(1-qa), qa*qf+(1-qa)*(1-qf), qa*(1-qf)])-1
 		return curr_state + step_addon
 
 def sample_nsteps(n, initial_state, qa, qf):
