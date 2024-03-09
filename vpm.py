@@ -1,7 +1,7 @@
 import torch
 from torch import nn
-from torch.utils.data import DataLoader, TensorDataset
 import numpy as np
+from collections import defaultdict
 import queueing
 
 '''
@@ -13,18 +13,12 @@ class Tau(nn.Module):
 		super().__init__()
 		# 4 hidden layers
 		self.model = nn.Sequential(
-			nn.Linear(total_states, 128),
+			nn.Linear(total_states, 32),
 			nn.ReLU(),
-			nn.Linear(128, 128),
-			nn.ReLU(),
-            nn.Linear(128, 128),
-			nn.ReLU(),
-            nn.Linear(128, 128),
-			nn.ReLU(),
-            nn.Linear(128, 128),
+			nn.Linear(32, 32),
 			nn.ReLU()
 		)
-		self.output_layer = nn.Sequential(nn.Linear(128, 1),
+		self.output_layer = nn.Sequential(nn.Linear(32, 1),
 										  nn.Softplus())
 	def forward(self, x):
 		x = self.model(x)
@@ -32,9 +26,8 @@ class Tau(nn.Module):
 		return x
 
 
-def compute_gradients():
-	pass
 
+# based on paper and https://github.com/bmazoure/batch_stationary_distribution
 
 def iterative_vpm(D, alpha_theta, alpha_v, power_steps, M, B, _lambda, max_state, beta1):
 	tau = Tau(total_states = max_state + 1)
@@ -47,48 +40,83 @@ def iterative_vpm(D, alpha_theta, alpha_v, power_steps, M, B, _lambda, max_state
 	optim_v = torch.optim.Adam([v], lr = alpha_v)
 
 	for t in range(power_steps):
-		for m in range(M):
+		# print(f"Power step {t+1}")
+		alpha_t = 1/np.sqrt(t+1)
+		for _ in range(M):
 			# fit transition data
 			x = []
 			x_star = []
 			transition_batch = np.random.choice(len(D), size=B, replace=False)
 			sampled_transitions = D[transition_batch]
 			x = sampled_transitions[:,0]
-			# next state
-			x_star = sampled_transitions[:,1]
-			data_loader = DataLoader(TensorDataset(x, x_star), batch_size=B, shuffle=True)
-			for x, x_star in data_loader:
-				output = tau(x)
-				output.retain_grad()
+			x_star = sampled_transitions[:, 1]
+			# One-hot encoding
+			x = torch.FloatTensor(np.array([[1 if node_val == i else 0 for i in range(max_state+1)] for node_val in x]))
+			x_star = torch.FloatTensor(np.array([[1 if node_val == i else 0 for i in range(max_state+1)] for node_val in x_star]))
+			grad_theta_x, grad_theta_xstar = defaultdict(list),defaultdict(list)
+			tau_x = tau(x)
+			tau_xstar = tau(x_star)
+			tau_t_x = tau_t(x)
+			tau_t_xstar = tau_t(x_star)
+			# Populate the gradients
+			for i in range(len(x)):
 				optim_theta.zero_grad()
-				grad_theta, grad_v = compute_gradients(output, v, lambda_val)
-			print(x_star)
-			break
+				tau_x.backward([torch.FloatTensor([[1] if i==j else [0] for j in range(len(tau_x))]) ], retain_graph=True)
+				for param in tau.named_parameters():
+					grad_theta_x[param[0]].append(param[1].grad.clone())
+				optim_theta.zero_grad()
+				tau_xstar.backward([torch.FloatTensor([[1] if i==j else [0] for j in range(len(tau_xstar))])], retain_graph=True)
+				for param in tau.named_parameters():
+					grad_theta_xstar[param[0]].append(param[1].grad.clone())
+
+			optim_theta.zero_grad()
+			optim_v.zero_grad()
+			
+			for param in tau.named_parameters():
+				# first dimension is B
+				grad_theta_tau_x_mat = torch.stack(grad_theta_xstar[param[0]])
+				grad_theta_tau_xstar_mat = torch.stack(grad_theta_x[param[0]])
+				
+				if len(grad_theta_tau_x_mat.shape) == 3:
+					tiled_tau_xstar =  tau_xstar.repeat(grad_theta_tau_xstar_mat.shape[1],1,grad_theta_tau_xstar_mat.shape[2]).permute(1,0,2)
+					tiled_tau_t_x =  tau_t_x.repeat(grad_theta_tau_xstar_mat.shape[1],1,grad_theta_tau_xstar_mat.shape[2]).permute(1,0,2)
+					tiled_tau_t_xstar =  tau_t_xstar.repeat(grad_theta_tau_xstar_mat.shape[1],1,grad_theta_tau_xstar_mat.shape[2]).permute(1,0,2)
+				else: 
+					tiled_tau_xstar =  tau_xstar.repeat(1,grad_theta_tau_xstar_mat.shape[1])
+					tiled_tau_t_x =  tau_t_x.repeat(1,grad_theta_tau_xstar_mat.shape[1])
+					tiled_tau_t_xstar =  tau_t_xstar.repeat(1,grad_theta_tau_xstar_mat.shape[1])
+
+				# tiled_tau_xstar = tau_xstar.tile((grad_theta_tau_xstar_mat.shape[0], ))
+				# tiled_tau_t_xstar = tau_t_xstar.tile((grad_theta_tau_xstar_mat.shape[0],))
+				# tiled_tau_t_x = tau_t_x.tile((grad_theta_tau_xstar_mat.shape[0],))
+				# print(tiled_tau_xstar.shape, grad_theta_tau_xstar_mat.shape)
+				grad_J_theta = (tiled_tau_xstar * grad_theta_tau_xstar_mat).mean(0) 
+				grad_J_theta -= (1 - alpha_t) * (tiled_tau_t_xstar * grad_theta_tau_xstar_mat).mean(0) 
+				grad_J_theta -= alpha_t * (tiled_tau_t_x * grad_theta_tau_xstar_mat).mean(0)
+				grad_J_theta += v*grad_theta_tau_x_mat.mean(0)
+				param[1].grad = grad_J_theta
+			
+			grad_v = ((tau_x).mean(dim=0)-1-_lambda*v)
+			v.grad = -grad_v
+			
+			optim_theta.step()
+			optim_v.step()
+			
+
 		# update and fix reference network
-		tau_t = tau_theta.clone().detach()
+		tau_t.load_state_dict(tau.state_dict())
 	return tau
 
-def get_D(n_steps, initial_state, qa, qf):
-	state_seq, max_state = queueing.sample_nsteps(n=n_steps+1, initial_state=initial_state,qa=qa,qf=qf)
-	transitions = []
-	for i in range(1,len(state_seq)):
-		transitions.append((state_seq[i-1], state_seq[i]))
+def get_D(n_steps, qa, qf):
+	transitions, max_state = queueing.sample_nsteps(n=n_steps, qa=qa,qf=qf)
 	return transitions, max_state
 
-if __name__ == "__main__":
-	_lambda = 1
-	qa = 0.8
-	qf = 0.9
-	M = 10
-	alpha_theta = 0.0005
-	alpha_v = 0.0005
-	beta1 = 0.5
-	T = 1000
-	rho = (qa*(1-qf))/(qf*(1-qa))
-	B = int(np.ceil(40*rho))
-	D, max_state = get_D(100, 0, qa, qf)
-	D = np.array(D)
-	iterative_vpm(D, alpha_theta, alpha_v, T, M, B, _lambda, max_state, beta1)
+def get_density(tau, max_state):
+	density_ratios = []
+	for idx in range(max_state+1):
+		density_ratios.append(tau(torch.FloatTensor([[1 if i == idx else 0 for i in range(max_state+1)]])).detach().cpu().item())
+	density_ratios = np.array(density_ratios)
+	return density_ratios/np.sum(density_ratios)
 
 
 
