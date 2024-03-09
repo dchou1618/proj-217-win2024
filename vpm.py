@@ -12,13 +12,16 @@ class Tau(nn.Module):
 	def __init__(self, total_states):
 		super().__init__()
 		# 4 hidden layers
+
 		self.model = nn.Sequential(
-			nn.Linear(total_states, 32),
+			nn.Linear(total_states, 128),
 			nn.ReLU(),
-			nn.Linear(32, 32),
+			nn.Linear(128, 128),
+			nn.ReLU(),
+            nn.Linear(128, 128),
 			nn.ReLU()
 		)
-		self.output_layer = nn.Sequential(nn.Linear(32, 1),
+		self.output_layer = nn.Sequential(nn.Linear(128, 1),
 										  nn.Softplus())
 	def forward(self, x):
 		x = self.model(x)

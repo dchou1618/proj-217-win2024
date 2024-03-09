@@ -4,6 +4,7 @@ import seaborn as sns
 import pandas as pd
 import matplotlib.pyplot as plt
 import vpm
+import estimate_stationary_dist as esd
 
 '''
 (1) Implement tabular model method by building up the transition matrix directly using the 
@@ -87,11 +88,11 @@ def ground_truth_queueing_stationary(qa, qf, max_state):
 
 def generate_plots(qa, qf, min_val, max_val, increment, var_name, runs, plot_name):
 	_lambda = 1
-	M = 10
+	M = 20
 	alpha_theta = 0.01
 	alpha_v = 0.01
 	beta1 = 0.5
-	T = 50
+	T = 5
 	rho = (qa*(1-qf))/(qf*(1-qa))
 	B = int(np.ceil(40*rho))
 	log_kl_dict = {"method":[], "Samples": [], 
@@ -102,8 +103,9 @@ def generate_plots(qa, qf, min_val, max_val, increment, var_name, runs, plot_nam
 		while num_runs < runs:
 			state_seq, max_state = sample_nsteps(n=transition_samples, qa=qa, qf=qf)
 			D = np.array(state_seq)
-			tau = vpm.iterative_vpm(D, alpha_theta, alpha_v, T, M, B, _lambda, max_state, beta1)
-			estimated_vpm = vpm.get_density(tau, max_state)
+			# tau = vpm.iterative_vpm(D, alpha_theta, alpha_v, T, M, B, _lambda, max_state, beta1)
+			# estimated_vpm = vpm.get_density(tau, max_state)
+			estimated_vpm = esd.estimate_stationary(D, max_state)
 
 			tabular_model = build_tabular(state_seq, max_state)
 			estimated = estimate_tabular_stationary(tabular_model, iters=200)
@@ -134,11 +136,11 @@ def generate_plots_over_qf(qa, min_val, max_val,  runs, plot_name):
 	log_kl_dict = {"method":[], "Prob": [], "Log KL":[]}
 	qfs = [np.round(min_val+(0.01)*i, 2) for i in range(int((max_val-min_val)/0.01 )+1)]
 	_lambda = 1
-	M = 10
+	M = 20
 	alpha_theta = 0.01
 	alpha_v = 0.01
 	beta1 = 0.5
-	T = 50
+	T = 5
 
 	for qf in qfs:
 		print(f"Generating runs for finish probability: {qf}")
@@ -214,5 +216,5 @@ if __name__ == "__main__":
 
 	np.random.seed(43)
 	generate_plots(qa, qf, min_transitions, max_transitions, 100, "transition_samples", runs, "figure2")
-	generate_plots_over_qf(qa, 0.82, 0.90, runs, "figure2_qf")
+	# generate_plots_over_qf(qa, 0.82, 0.90, runs, "figure2_qf")
 	
