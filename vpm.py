@@ -8,26 +8,32 @@ import queueing
 (1) Implement variational power method based on paper
 '''
 
+# 
+
 class Tau(nn.Module):
 	def __init__(self, total_states):
 		super().__init__()
 		# 4 hidden layers
 
 		self.model = nn.Sequential(
-			nn.Linear(total_states, 128),
+			nn.Linear(total_states, 32),
 			nn.ReLU(),
-			nn.Linear(128, 128),
+			nn.Linear(32, 16),
 			nn.ReLU(),
-            nn.Linear(128, 128),
+            nn.Linear(16, 32),
 			nn.ReLU()
 		)
-		self.output_layer = nn.Sequential(nn.Linear(128, 1),
+		# experimenting with different initializations - He initialization
+		for i in range(0,len(self.model),2):
+			nn.init.kaiming_normal_(self.model[i].weight, mode='fan_in', nonlinearity='relu')
+			nn.init.zeros_(self.model[i].bias)
+		
+		self.output_layer = nn.Sequential(nn.Linear(32, 1),
 										  nn.Softplus())
 	def forward(self, x):
 		x = self.model(x)
 		x = self.output_layer(x)
 		return x
-
 
 
 # based on paper and built off of https://github.com/bmazoure/batch_stationary_distribution
@@ -43,9 +49,8 @@ def iterative_vpm(D, alpha_theta, alpha_v, power_steps, M, B, _lambda, max_state
 	optim_v = torch.optim.Adam([v], lr = alpha_v)
 
 	for t in range(power_steps):
-		# print(f"Power step {t+1}")
 		alpha_t = 1/np.sqrt(t+1)
-		for _ in range(M):
+		for i in range(M):
 			# fit transition data
 			x = []
 			x_star = []
@@ -89,14 +94,10 @@ def iterative_vpm(D, alpha_theta, alpha_v, power_steps, M, B, _lambda, max_state
 					tiled_tau_t_x =  tau_t_x.repeat(1,grad_theta_tau_xstar_mat.shape[1])
 					tiled_tau_t_xstar =  tau_t_xstar.repeat(1,grad_theta_tau_xstar_mat.shape[1])
 
-				# tiled_tau_xstar = tau_xstar.tile((grad_theta_tau_xstar_mat.shape[0], ))
-				# tiled_tau_t_xstar = tau_t_xstar.tile((grad_theta_tau_xstar_mat.shape[0],))
-				# tiled_tau_t_x = tau_t_x.tile((grad_theta_tau_xstar_mat.shape[0],))
-				# print(tiled_tau_xstar.shape, grad_theta_tau_xstar_mat.shape)
 				grad_J_theta = (tiled_tau_xstar * grad_theta_tau_xstar_mat).mean(0) 
 				grad_J_theta -= (1 - alpha_t) * (tiled_tau_t_xstar * grad_theta_tau_xstar_mat).mean(0) 
 				grad_J_theta -= alpha_t * (tiled_tau_t_x * grad_theta_tau_xstar_mat).mean(0)
-				grad_J_theta += v*grad_theta_tau_x_mat.mean(0)
+				grad_J_theta += v*(grad_theta_tau_x_mat.mean(0))
 				param[1].grad = grad_J_theta
 			
 			grad_v = ((tau_x).mean(dim=0)-1-_lambda*v)
@@ -120,6 +121,8 @@ def get_density(tau, max_state):
 		density_ratios.append(tau(torch.FloatTensor([[1 if i == idx else 0 for i in range(max_state+1)]])).detach().cpu().item())
 	density_ratios = np.array(density_ratios)
 	return density_ratios/np.sum(density_ratios)
+
+
 
 
 
