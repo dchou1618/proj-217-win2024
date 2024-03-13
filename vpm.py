@@ -30,7 +30,7 @@ class Tau(nn.Module):
 
 
 
-# based on paper and https://github.com/bmazoure/batch_stationary_distribution
+# based on paper and built off of https://github.com/bmazoure/batch_stationary_distribution
 
 def iterative_vpm(D, alpha_theta, alpha_v, power_steps, M, B, _lambda, max_state, beta1):
 	tau = Tau(total_states = max_state + 1)

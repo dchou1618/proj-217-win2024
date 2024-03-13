@@ -98,7 +98,7 @@ def ground_truth_queueing_stationary(qa, qf, max_state):
 (5) Plot generation
 '''
 
-def generate_plots(qa, qf, min_val, max_val, increment, var_name, runs, plot_name, run_biased=False):
+def generate_plots(qa, qf, min_val, max_val, increment, runs, plot_name, constant_factor=40, run_biased=False):
 	_lambda = 1
 	M = 20
 	alpha_theta = 0.01
@@ -106,7 +106,7 @@ def generate_plots(qa, qf, min_val, max_val, increment, var_name, runs, plot_nam
 	beta1 = 0.5
 	T = 5
 	rho = (qa*(1-qf))/(qf*(1-qa))
-	B = int(np.ceil(40*rho))
+	B = int(np.ceil(constant_factor*rho))
 	log_kl_dict = {"method":[], "Samples": [], 
                   "Log KL": []}
 	for transition_samples in range(min_val, max_val+1, increment):
@@ -145,9 +145,9 @@ def generate_plots(qa, qf, min_val, max_val, increment, var_name, runs, plot_nam
 	log_kl_plot.set(ylim=(-4, 5))
 	plt.grid()
 	fig = log_kl_plot.get_figure()
-	fig.savefig(f"{plot_name}"+("_non_iid" if run_biased else "")+".png") 
+	fig.savefig(f"{plot_name}"+("_non_iid" if run_biased else "")+f"_states_{constant_factor}.png") 
 	
-def generate_plots_over_qf(qa, min_val, max_val,  runs, plot_name, run_biased=False):
+def generate_plots_over_qf(qa, min_val, max_val,  runs, plot_name, constant_factor=40, run_biased=False):
 	log_kl_dict = {"method":[], "Prob": [], "Log KL":[]}
 	qfs = [np.round(min_val+(0.01)*i, 2) for i in range(int((max_val-min_val)/0.01 )+1)]
 	_lambda = 1
@@ -160,7 +160,7 @@ def generate_plots_over_qf(qa, min_val, max_val,  runs, plot_name, run_biased=Fa
 	for qf in qfs:
 		print(f"Generating runs for finish probability: {qf}")
 		rho = (qa*(1-qf))/(qf*(1-qa))
-		B = int(np.ceil(40*rho))
+		B = int(np.ceil(constant_factor*rho))
 		num_runs = 0
 		while num_runs < runs:
 			if run_biased:
@@ -198,7 +198,7 @@ def generate_plots_over_qf(qa, min_val, max_val,  runs, plot_name, run_biased=Fa
 	log_kl_plot.set(ylim=(-4, 5))
 	plt.grid()
 	fig = log_kl_plot.get_figure()
-	fig.savefig(f"{plot_name}"+("_non_iid" if run_biased else "")+".png")
+	fig.savefig(f"{plot_name}"+("_non_iid" if run_biased else "")+f"_states_{constant_factor}.png")
 
 if __name__ == "__main__":
 	qa = 0.8
@@ -222,8 +222,23 @@ if __name__ == "__main__":
 	"""
 
 	np.random.seed(101)
-	generate_plots(qa, qf, min_transitions, max_transitions, 100, "transition_samples", runs, "figure2")
-	generate_plots_over_qf(qa, 0.82, 0.90, runs, "figure2_qf")
-	generate_plots(qa, qf, min_transitions, max_transitions, 100, "transition_samples", runs, "figure2", run_biased=True)
-	generate_plots_over_qf(qa, 0.82, 0.90, runs, "figure2_qf", run_biased=True)
+	generate_plots(qa, qf, min_transitions, max_transitions, 100, runs, "figure2", constant_factor=40)
+	generate_plots_over_qf(qa, 0.82, 0.90, runs, "figure2_qf", constant_factor=40)
+	generate_plots(qa, qf, min_transitions, max_transitions, 100, runs, "figure2", run_biased=True,constant_factor=40)
+	generate_plots_over_qf(qa, 0.82, 0.90, runs, "figure2_qf", run_biased=True,constant_factor=40)
+
+	generate_plots(qa, qf, min_transitions, max_transitions, 100, runs, "figure2", constant_factor=30)
+	generate_plots_over_qf(qa, 0.82, 0.90, runs, "figure2_qf", constant_factor=30)
+	generate_plots(qa, qf, min_transitions, max_transitions, 100, runs, "figure2", run_biased=True,constant_factor=30)
+	generate_plots_over_qf(qa, 0.82, 0.90, runs, "figure2_qf", run_biased=True,constant_factor=30)
+
+	generate_plots(qa, qf, min_transitions, max_transitions, 100, runs, "figure2", constant_factor=20)
+	generate_plots_over_qf(qa, 0.82, 0.90, runs, "figure2_qf", constant_factor=20)
+	generate_plots(qa, qf, min_transitions, max_transitions, 100, runs, "figure2", run_biased=True,constant_factor=20)
+	generate_plots_over_qf(qa, 0.82, 0.90, runs, "figure2_qf", run_biased=True,constant_factor=20)
+
+	generate_plots(qa, qf, min_transitions, max_transitions, 100, runs, "figure2", constant_factor=10)
+	generate_plots_over_qf(qa, 0.82, 0.90, runs, "figure2_qf", constant_factor=10)
+	generate_plots(qa, qf, min_transitions, max_transitions, 100, runs, "figure2", run_biased=True,constant_factor=10)
+	generate_plots_over_qf(qa, 0.82, 0.90, runs, "figure2_qf", run_biased=True,constant_factor=10)
 	
