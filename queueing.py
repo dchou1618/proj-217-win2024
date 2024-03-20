@@ -3,7 +3,10 @@ import scipy.stats
 import seaborn as sns
 import pandas as pd
 import matplotlib.pyplot as plt
+import plotly.graph_objects as go
 import vpm
+
+
 # import estimate_stationary_dist as esd
 
 '''
@@ -204,6 +207,29 @@ def generate_plots_over_qf(qa, min_val, max_val,  runs, plot_name, constant_fact
 	fig = log_kl_plot.get_figure()
 	fig.savefig(f"{plot_name}"+("_non_iid" if run_biased else "")+f"_states_{constant_factor}.png")
 
+def visualize_step_probs(qa,qf):
+	return qf*(1-qa), qa*qf+(1-qa)*(1-qf), qa*(1-qf)
+
+def generate_probability_plots(qa, qf_range):
+	x=[str(np.round(val,2)) for val in qf_range]
+	ys = [[],[],[]]
+	fig = go.Figure()
+	for qf in qf_range:
+		probs = visualize_step_probs(qa, qf)
+		ys[0].append(probs[0])
+		ys[1].append(probs[1])
+		ys[2].append(probs[2])
+	range_min, range_max = np.round(min(qf_range),2), np.round(max(qf_range),2)
+	fig.add_trace(go.Bar(x=x, y=ys[0], name='One Less in Line',marker_color="firebrick"))
+	fig.add_trace(go.Bar(x=x, y=ys[1], name='Queue Length Remains the Same',marker_color="gray"))
+	fig.add_trace(go.Bar(x=x, y=ys[2], name='One More in Line',marker_color="darkblue"))
+	fig.update_layout(barmode='stack', xaxis={'categoryorder':'category ascending'},
+				   title=f"Transition Probabilities for Different Finish Probabilities ({range_min} to {range_max})")
+	fig.update_xaxes(title_text="Finish Probability")
+	fig.update_yaxes(title_text="Probability")
+	fig.write_image(f"prob_plot_{range_min}_{range_max}.png")
+
+
 if __name__ == "__main__":
 	qa = 0.8
 	qf = 0.9
@@ -211,24 +237,18 @@ if __name__ == "__main__":
 	min_transitions, max_transitions = 100, 500
 	
 	runs = 10
-	"""	
-	sampled_transitions, max_state = sample_nsteps(n=2000, qa=qa, qf=qf)
-	# print(sampled_transitions)
-	tabular_model = build_tabular(sampled_transitions, max_state)
-	# print(tabular_model)
-	estimated = estimate_tabular_stationary(tabular_model, iters=200)
-	# true distribution only up to a maximum state.
-	true = ground_truth_queueing_stationary(qa, qf, max_state)
-	print(estimated)
-	print(true)
-	log_kl = np.log(scipy.stats.entropy(estimated, true))
+	
+	generate_probability_plots(qa=0.8, qf_range=[0.82+(i*0.01) for i in range(9)])
+	generate_probability_plots(qa=0.7, qf_range=[0.71+(i*0.01) for i in range(11)])
 
-	print(log_kl)
-	"""
-	generate_plots(qa, qf, min_transitions, max_transitions, 100, runs, "figure2", constant_factor=40)
-	generate_plots_over_qf(qa, 0.82, 0.90, runs, "figure2_qf", constant_factor=40)
-	generate_plots(qa, qf, min_transitions, max_transitions, 100, runs, "figure2", run_biased=True,constant_factor=40)
-	generate_plots_over_qf(qa, 0.82, 0.90, runs, "figure2_qf", run_biased=True,constant_factor=40)
+
+	# generate_plots(qa, qf, min_transitions, max_transitions, 100, runs, "figure2", constant_factor=40)
+	# generate_plots_over_qf(qa, 0.82, 0.90, runs, "figure2_qf", constant_factor=40)
+	# generate_plots(qa, qf, min_transitions, max_transitions, 100, runs, "figure2", run_biased=True,constant_factor=40)
+	# generate_plots_over_qf(qa, 0.82, 0.90, runs, "figure2_qf", run_biased=True,constant_factor=40)
+
+	# generate_plots(0.8, 0.9, 500, 1200, 100, runs, "figure2", run_biased=False, constant_factor=40)
+	# generate_plots_over_qf(0.70, 0.71, 0.81, runs, "figure2_qf", run_biased=False,constant_factor=40)
 
 	# generate_plots(qa, qf, min_transitions, max_transitions, 100, runs, "figure2", constant_factor=30)
 	# generate_plots_over_qf(qa, 0.82, 0.90, runs, "figure2_qf", constant_factor=30)
