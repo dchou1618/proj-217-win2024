@@ -240,28 +240,3 @@ if __name__ == "__main__":
 	
 	generate_probability_plots(qa=0.8, qf_range=[0.82+(i*0.01) for i in range(9)])
 	generate_probability_plots(qa=0.7, qf_range=[0.71+(i*0.01) for i in range(11)])
-
-
-	# generate_plots(qa, qf, min_transitions, max_transitions, 100, runs, "figure2", constant_factor=40)
-	# generate_plots_over_qf(qa, 0.82, 0.90, runs, "figure2_qf", constant_factor=40)
-	# generate_plots(qa, qf, min_transitions, max_transitions, 100, runs, "figure2", run_biased=True,constant_factor=40)
-	# generate_plots_over_qf(qa, 0.82, 0.90, runs, "figure2_qf", run_biased=True,constant_factor=40)
-
-	# generate_plots(0.8, 0.9, 500, 1200, 100, runs, "figure2", run_biased=False, constant_factor=40)
-	# generate_plots_over_qf(0.70, 0.71, 0.81, runs, "figure2_qf", run_biased=False,constant_factor=40)
-
-	# generate_plots(qa, qf, min_transitions, max_transitions, 100, runs, "figure2", constant_factor=30)
-	# generate_plots_over_qf(qa, 0.82, 0.90, runs, "figure2_qf", constant_factor=30)
-	# generate_plots(qa, qf, min_transitions, max_transitions, 100, runs, "figure2", run_biased=True,constant_factor=30)
-	# generate_plots_over_qf(qa, 0.82, 0.90, runs, "figure2_qf", run_biased=True,constant_factor=30)
-
-	# generate_plots(qa, qf, min_transitions, max_transitions, 100, runs, "figure2", constant_factor=20)
-	# generate_plots_over_qf(qa, 0.82, 0.90, runs, "figure2_qf", constant_factor=20)
-	# generate_plots(qa, qf, min_transitions, max_transitions, 100, runs, "figure2", run_biased=True,constant_factor=20)
-	# generate_plots_over_qf(qa, 0.82, 0.90, runs, "figure2_qf", run_biased=True,constant_factor=20)
-
-	# generate_plots(qa, qf, min_transitions, max_transitions, 100, runs, "figure2", constant_factor=10)
-	# generate_plots_over_qf(qa, 0.82, 0.90, runs, "figure2_qf", constant_factor=10)
-	# generate_plots(qa, qf, min_transitions, max_transitions, 100, runs, "figure2", run_biased=True,constant_factor=10)
-	# generate_plots_over_qf(qa, 0.82, 0.90, runs, "figure2_qf", run_biased=True,constant_factor=10)
-	
