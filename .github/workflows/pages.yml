@@ -1,0 +1,20 @@
+name: Deploy Github Pages
+
+on:
+  push:
+    branches: 
+      - master
+  
+jobs: 
+  deploy: 
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: action/checkout@v3
+
+      - name: Deploy to Github Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs
