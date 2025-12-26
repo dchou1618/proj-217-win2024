@@ -90,7 +90,7 @@ def fit_tau(X_t,X_tp1, tau, tau_t, vee, opt_tau, opt_vee, device, epoch):
         # vee.grad = grad_J_v
 		
         avg_grad_J_tau.append( grad_J_tau.mean().item() )
-    vee.grad = - ((tau_xt.mean() - 1 - lam*v))
+    vee.grad = - ((tau_xt.mean() - 1))
     avg_grad_J_v = vee.grad.item()
     opt_tau.step()
     opt_vee.step()
