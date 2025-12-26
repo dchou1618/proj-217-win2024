@@ -1,7 +1,6 @@
 import torch
 import numpy as np
 import torch.nn as nn
-import copy
 from collections import defaultdict
 import queueing
 
