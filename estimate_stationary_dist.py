@@ -107,8 +107,8 @@ def estimate_stationary(D, max_state):
     X_t = D[:,0]
     X_tp1 = D[:, 1]
     # One-hot encoding
-    X_t = torch.FloatTensor(np.array([[1 if node_val == i else 0 for i in range(max_state+1)] for node_val in X_t]))
-    X_tp1 = torch.FloatTensor(np.array([[1 if node_val == i else 0 for i in range(max_state+1)] for node_val in X_tp1]))
+    X_t = torch.nn.functional.one_hot(X_t.long(), num_classes=max_state+1).float()
+    X_tp1 = torch.nn.functional.one_hot(X_tp1.long(), num_classes=max_state+1).float()
 
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
