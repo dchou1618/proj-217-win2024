@@ -1,7 +1,6 @@
 import torch
 import numpy as np
 import torch.nn as nn
-import copy
 from collections import defaultdict
 import queueing
 
@@ -90,12 +89,17 @@ def fit_tau(X_t,X_tp1, tau, tau_t, vee, opt_tau, opt_vee, device, epoch):
         # vee.grad = grad_J_v
 		
         avg_grad_J_tau.append( grad_J_tau.mean().item() )
-    vee.grad = - ((tau_xt.mean() - 1 - lam*v))
+    vee.grad = - (2 * lam * (tau_xt.mean() - 1 - vee))
     avg_grad_J_v = vee.grad.item()
     opt_tau.step()
     opt_vee.step()
 
-    tau_t.load_state_dict(tau.state_dict())
+    # Do soft update on the reference network
+    tau_t_state = tau_t.state_dict()
+    tau_state = tau.state_dict()
+    for key in tau_state.keys():
+        tau_t_state[key] = 0.99 * tau_t_state[key] + 0.01 * tau_state[key]
+    tau_t.load_state_dict(tau_t_state)
 
     return np.mean(avg_grad_J_tau), avg_grad_J_v
 
@@ -107,14 +111,12 @@ def get_D(n_steps, qa, qf):
 def estimate_stationary(D, max_state):
     X_t = D[:,0]
     X_tp1 = D[:, 1]
-    # One-hot encoding
-    X_t = torch.FloatTensor(np.array([[1 if node_val == i else 0 for i in range(max_state+1)] for node_val in X_t]))
-    X_tp1 = torch.FloatTensor(np.array([[1 if node_val == i else 0 for i in range(max_state+1)] for node_val in X_tp1]))
 
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    X_t = torch.FloatTensor(np.array(X_t,dtype=float)).to(device)
-    X_tp1 = torch.FloatTensor(np.array(X_tp1,dtype=float)).to(device)
+    # One-hot encoding
+    X_t = torch.nn.functional.one_hot(X_t.long(), num_classes=max_state+1).float().to(device)
+    X_tp1 = torch.nn.functional.one_hot(X_tp1.long(), num_classes=max_state+1).float().to(device)
 
     
 
