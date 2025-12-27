@@ -32,7 +32,7 @@ def fit_tau(X_t,X_tp1, tau, tau_t, vee, opt_tau, opt_vee, device, epoch):
     Meant to be called on a batch of states to estimate the batch gradient wrt tau and v.
     """
     alpha_t = 1. / np.sqrt(epoch+1)
-    lam = 10
+    lam = 0.1
 
     tau_xt = tau(X_t)
     tau_xtp1 = tau(X_tp1)
@@ -73,17 +73,15 @@ def fit_tau(X_t,X_tp1, tau, tau_t, vee, opt_tau, opt_vee, device, epoch):
         """
 
         if len(grad_theta_tau_xt_MAT.shape) == 3: # Matrix
-            tiled_tau_xt =  tau_xt.repeat(grad_theta_tau_xt_MAT.shape[1],1,grad_theta_tau_xt_MAT.shape[2]).permute(1,0,2)
             tiled_tau_xtp1 =  tau_xtp1.repeat(grad_theta_tau_xtp1_MAT.shape[1],1,grad_theta_tau_xtp1_MAT.shape[2]).permute(1,0,2)
             tiled_tau_t_xt =  tau_t_xt.repeat(grad_theta_tau_xt_MAT.shape[1],1,grad_theta_tau_xt_MAT.shape[2]).permute(1,0,2)
             tiled_tau_t_xtp1 =  tau_t_xtp1.repeat(grad_theta_tau_xtp1_MAT.shape[1],1,grad_theta_tau_xtp1_MAT.shape[2]).permute(1,0,2)
         else: # Bias
-            tiled_tau_xt =  tau_xt.repeat(1,grad_theta_tau_xt_MAT.shape[1])
             tiled_tau_xtp1 =  tau_xtp1.repeat(1,grad_theta_tau_xtp1_MAT.shape[1])
             tiled_tau_t_xt =  tau_t_xt.repeat(1,grad_theta_tau_xt_MAT.shape[1])
             tiled_tau_t_xtp1 =  tau_t_xtp1.repeat(1,grad_theta_tau_xtp1_MAT.shape[1])
 
-        grad_J_tau = (tiled_tau_xtp1 * grad_theta_tau_xtp1_MAT).mean(0) - (1 - alpha_t) * (tiled_tau_t_xtp1 * grad_theta_tau_xtp1_MAT).mean(0) - alpha_t * (tiled_tau_t_xt * grad_theta_tau_xtp1_MAT).mean(0) + v*grad_theta_tau_xt_MAT.mean(0)
+        grad_J_tau = (tiled_tau_xtp1 * grad_theta_tau_xtp1_MAT).mean(0) - (1 - alpha_t) * (tiled_tau_t_xtp1 * grad_theta_tau_xtp1_MAT).mean(0) - alpha_t * (tiled_tau_t_xt * grad_theta_tau_xt_MAT).mean(0) + v*grad_theta_tau_xt_MAT.mean(0)
         # grad_J_v = - (2 * lam * (tau_xt.mean() - 1 - v))
         param[1].grad = grad_J_tau
         # vee.grad = grad_J_v
@@ -105,18 +103,18 @@ def fit_tau(X_t,X_tp1, tau, tau_t, vee, opt_tau, opt_vee, device, epoch):
 
 
 def get_D(n_steps, qa, qf):
-	transitions, max_state = queueing.sample_nsteps(n=n_steps, qa=qa,qf=qf)
+	transitions, max_state = queueing.sample_nsteps_non_iid(n=n_steps, initial_state=0, qa=qa,qf=qf)
 	return transitions, max_state
 
 def estimate_stationary(D, max_state):
-    X_t = D[:,0]
-    X_tp1 = D[:, 1]
+    X_t = torch.from_numpy(D[:, 0]).long()
+    X_tp1 = torch.from_numpy(D[:, 1]).long()
 
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     # One-hot encoding
-    X_t = torch.nn.functional.one_hot(X_t.long(), num_classes=max_state+1).float().to(device)
-    X_tp1 = torch.nn.functional.one_hot(X_tp1.long(), num_classes=max_state+1).float().to(device)
+    X_t = torch.nn.functional.one_hot(X_t, num_classes=max_state+1).float().to(device)
+    X_tp1 = torch.nn.functional.one_hot(X_tp1, num_classes=max_state+1).float().to(device)
 
     
 
@@ -135,7 +133,7 @@ def estimate_stationary(D, max_state):
 
     for epoch in range(100):
 
-        avg_J_grad_tau, avg_J_grad_v = fit_tau(X_t,X_tp1, tau, tau_t, vee, opt_tau, opt_vee,device, epoch)
+        _, _ = fit_tau(X_t,X_tp1, tau, tau_t, vee, opt_tau, opt_vee,device, epoch)
         density_ratios = []
         for idx in range(max_state+1):
             density_ratios.append(tau(torch.FloatTensor([[1 if i == idx else 0 for i in range(max_state+1)]])).detach().cpu().item())
@@ -147,10 +145,33 @@ if __name__ == "__main__":
     Simple test with a 3x3 T. Its stationary vector is (0.25,0.5,0.25),
     so tau(0),tau(1),tau(2) / (tau(0)+tau(1)+tau(2)) should converge to this
     """
+    import scipy.stats
     qa = 0.8
     qf = 0.9
     rho = (qa*(1-qf))/(qf*(1-qa))
     B = int(np.ceil(40*rho))
-    
+    n_steps = 500
+    D, max_state = get_D(n_steps, qa, qf)
+    D = np.array(D)
+
+    # Estimate stationary distribution using VPM
+    estimated_dist = estimate_stationary(D, max_state)
+
+    # Ground truth stationary distribution for Geo/Geo/1 queue (truncated at max_state)
+    rho = (qa * (1 - qf)) / (qf * (1 - qa))
+    true_dist = np.array([(1 - rho) * (rho ** i) for i in range(max_state + 1)])
+
+    # Normalize just in case (true_dist should already sum to ~1)
+    true_dist /= true_dist.sum()
+
+    # Print both distributions for comparison
+    print("Estimated stationary distribution (VPM):")
+    print(np.round(estimated_dist, 4))
+    print("\nGround truth stationary distribution:")
+    print(np.round(true_dist, 4))
+
+    # Calculate KL divergence (true || estimated)
+    kl_divergence = scipy.stats.entropy(true_dist, estimated_dist)
+    print(f"\nKL divergence (true || estimated): {kl_divergence:.6f}")
     
     
