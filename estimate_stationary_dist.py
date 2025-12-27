@@ -111,14 +111,12 @@ def get_D(n_steps, qa, qf):
 def estimate_stationary(D, max_state):
     X_t = D[:,0]
     X_tp1 = D[:, 1]
-    # One-hot encoding
-    X_t = torch.nn.functional.one_hot(X_t.long(), num_classes=max_state+1).float()
-    X_tp1 = torch.nn.functional.one_hot(X_tp1.long(), num_classes=max_state+1).float()
 
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    X_t = torch.FloatTensor(np.array(X_t,dtype=float)).to(device)
-    X_tp1 = torch.FloatTensor(np.array(X_tp1,dtype=float)).to(device)
+    # One-hot encoding
+    X_t = torch.nn.functional.one_hot(X_t.long(), num_classes=max_state+1).float().to(device)
+    X_tp1 = torch.nn.functional.one_hot(X_tp1.long(), num_classes=max_state+1).float().to(device)
 
     
 
