@@ -94,7 +94,12 @@ def fit_tau(X_t,X_tp1, tau, tau_t, vee, opt_tau, opt_vee, device, epoch):
     opt_tau.step()
     opt_vee.step()
 
-    tau_t.load_state_dict(tau.state_dict())
+    # Do soft update on the reference network
+    tau_t_state = tau_t.state_dict()
+    tau_state = tau.state_dict()
+    for key in tau_state.keys():
+        tau_t_state[key] = 0.99 * tau_t_state[key] + 0.01 * tau_state[key]
+    tau_t.load_state_dict(tau_t_state)
 
     return np.mean(avg_grad_J_tau), avg_grad_J_v
 
