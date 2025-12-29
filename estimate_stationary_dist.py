@@ -36,13 +36,14 @@ def fit_tau(X_t,X_tp1, tau, tau_t, vee, opt_tau, opt_vee, epoch):
 
     tau_xt = tau(X_t).squeeze()
     tau_xtp1 = tau(X_tp1).squeeze()
-    tau_t_xt = tau_t(X_t).squeeze()
-    tau_t_xtp1 = tau_t(X_tp1).squeeze()
+    with torch.no_grad():
+        tau_t_xt = tau_t(X_t).squeeze()
+        tau_t_xtp1 = tau_t(X_tp1).squeeze()
     J_tau = (
         (tau_xtp1 ** 2).mean()
         - (1 - alpha_t) * (tau_t_xtp1 * tau_xtp1).mean()
-        - alpha_t * (tau_t_xt * tau_xt).mean()
-        + vee * tau_xt.mean()
+        - alpha_t * (tau_t_xt * tau_xtp1).mean()
+        + 2 * vee * tau_xt.mean()
     )
 
     J_v = lam * (2 * vee * (tau_xt.mean() - 1) - vee**2)
@@ -56,21 +57,12 @@ def fit_tau(X_t,X_tp1, tau, tau_t, vee, opt_tau, opt_vee, epoch):
     opt_tau.step()
     opt_vee.step()
 
-    # Do soft update on the reference network
-    with torch.no_grad():
-        tau_t_state = tau_t.state_dict()
-        tau_state = tau.state_dict()
-        for key in tau_state.keys():
-            tau_t_state[key] = 0.99 * tau_t_state[key] + 0.01 * tau_state[key]
-        tau_t.load_state_dict(tau_t_state)
-
-
 
 def get_D(n_steps, qa, qf):
 	transitions, max_state = queueing.sample_nsteps_non_iid(n=n_steps, initial_state=0, qa=qa,qf=qf)
 	return transitions, max_state
 
-def estimate_stationary(D, max_state):
+def estimate_stationary(D, max_state, power_iters=20, inner_steps=200):
     X_t = torch.from_numpy(D[:, 0]).long()
     X_tp1 = torch.from_numpy(D[:, 1]).long()
 
@@ -89,22 +81,22 @@ def estimate_stationary(D, max_state):
         tau = tau.cuda()
         tau_t = tau_t.cuda()
 
-    tau_t.load_state_dict(tau.state_dict())
-
     opt_tau = torch.optim.Adam(tau.parameters(),lr=1e-3)
-    opt_vee = torch.optim.Adam([vee],lr=1e-3)
+    opt_vee = torch.optim.Adam([vee],lr=1e-5)
     
 
-    for epoch in range(500):
-        fit_tau(X_t,X_tp1, tau, tau_t, vee, opt_tau, opt_vee, epoch)
-        density_ratios = []
-        with torch.no_grad():
-            for idx in range(max_state+1):
-                input_vec = torch.zeros(max_state+1)
-                input_vec[idx] = 1.0
-                input_vec = input_vec.unsqueeze(0).to(device)
-                density_ratios.append(tau(input_vec).item())
-        density_ratios = np.array(density_ratios)
+    for t in range(power_iters):
+        tau_t.load_state_dict(tau.state_dict())
+        for _ in range(inner_steps):
+            fit_tau(X_t,X_tp1, tau, tau_t, vee, opt_tau, opt_vee, t)
+    density_ratios = []
+    with torch.no_grad():
+        for idx in range(max_state+1):
+            input_vec = torch.zeros(max_state+1)
+            input_vec[idx] = 1.0
+            input_vec = input_vec.unsqueeze(0).to(device)
+            density_ratios.append(tau(input_vec).item())
+    density_ratios = np.array(density_ratios)
     return density_ratios/np.sum(density_ratios)
 
 if __name__ == "__main__":
