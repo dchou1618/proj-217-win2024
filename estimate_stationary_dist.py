@@ -4,6 +4,8 @@ import torch.nn as nn
 from collections import defaultdict
 import queueing
 
+import matplotlib.pyplot as plt
+
 """
 Implementation by Bogdan Mazoure
 Paper: https://arxiv.org/abs/2003.00722
@@ -13,11 +15,9 @@ class Tau(nn.Module):
     def __init__(self,input_dim):
         super().__init__()
         self.model = nn.Sequential(
-			nn.Linear(input_dim, 32),
+			nn.Linear(input_dim, 64),
 			nn.ReLU(),
-			nn.Linear(32, 32),
-			nn.ReLU(),
-            nn.Linear(32, 32),
+			nn.Linear(64, 32),
 			nn.ReLU()
 		)
         self.output_layer = nn.Sequential(nn.Linear(32, 1),
@@ -26,87 +26,51 @@ class Tau(nn.Module):
         x = self.model(x)
         x = self.output_layer(x)
         return x
-    
-def fit_tau(X_t,X_tp1, tau, tau_t, vee, opt_tau, opt_vee, device, epoch):
+
+class TauTabular(nn.Module):
+    def __init__(self, n):
+        super().__init__()
+        self.log_tau = nn.Parameter(torch.zeros(n))
+
+    def forward(self, x):
+        idx = x.argmax(dim=1)
+        return torch.exp(self.log_tau[idx]).unsqueeze(1)
+
+
+def fit_tau(X_t,X_tp1, tau, tau_t, vee, opt_tau, opt_vee, epoch):
     """
     Meant to be called on a batch of states to estimate the batch gradient wrt tau and v.
     """
-    alpha_t = 1. / np.sqrt(epoch+1)
-    lam = 0.1
 
-    tau_xt = tau(X_t)
-    tau_xtp1 = tau(X_tp1)
-    tau_t_xt = tau_t(X_t)
-    tau_t_xtp1 = tau_t(X_tp1)
-    v = vee
+    tau_xt = tau(X_t).squeeze()
+    tau_xtp1 = tau(X_tp1).squeeze()
+    with torch.no_grad():
+        tau_t_xt = tau_t(X_t).squeeze()
+    J_tau = (
+        (tau_xtp1 ** 2).mean()
+        - (tau_t_xt * tau_xtp1).mean()
+        + 2 * vee * tau_xt.mean()
+    )
 
-    grad_theta_tau_xt, grad_theta_tau_xtp1 = defaultdict(list),defaultdict(list)
+    J_v = -(vee * (tau_xt.mean() - 1))
 
-    for i in range(len(X_t)):
-        opt_tau.zero_grad()
-        tau_xt.backward([torch.FloatTensor([[1] if i==j else [0] for j in range(len(tau_xt))]).to(device)],retain_graph=True)
-
-        for param in tau.named_parameters():
-            grad_theta_tau_xt[param[0]].append(param[1].grad.clone())
-
-        opt_tau.zero_grad()
-        tau_xtp1.backward([torch.FloatTensor([[1] if i==j else [0] for j in range(len(tau_xtp1))]).to(device)],retain_graph=True)
-        for param in tau.named_parameters():
-            grad_theta_tau_xtp1[param[0]].append(param[1].grad.clone())
-        
     opt_tau.zero_grad()
     opt_vee.zero_grad()
 
-    avg_grad_J_tau = []
-    avg_grad_J_v = []
+    J_tau.backward(retain_graph=True)
+    J_v.backward()
 
-    for param in tau.named_parameters():
-        """
-        grad_theta: n_batch x n_out x n_in (matrix)
-                    n_batch x n_out (bias)
-        """
-        grad_theta_tau_xt_MAT = torch.stack(grad_theta_tau_xt[param[0]])
-        grad_theta_tau_xtp1_MAT = torch.stack(grad_theta_tau_xtp1[param[0]])
-
-        """
-        Defined both gradients as in Eq.17
-        """
-
-        if len(grad_theta_tau_xt_MAT.shape) == 3: # Matrix
-            tiled_tau_xtp1 =  tau_xtp1.repeat(grad_theta_tau_xtp1_MAT.shape[1],1,grad_theta_tau_xtp1_MAT.shape[2]).permute(1,0,2)
-            tiled_tau_t_xt =  tau_t_xt.repeat(grad_theta_tau_xt_MAT.shape[1],1,grad_theta_tau_xt_MAT.shape[2]).permute(1,0,2)
-            tiled_tau_t_xtp1 =  tau_t_xtp1.repeat(grad_theta_tau_xtp1_MAT.shape[1],1,grad_theta_tau_xtp1_MAT.shape[2]).permute(1,0,2)
-        else: # Bias
-            tiled_tau_xtp1 =  tau_xtp1.repeat(1,grad_theta_tau_xtp1_MAT.shape[1])
-            tiled_tau_t_xt =  tau_t_xt.repeat(1,grad_theta_tau_xt_MAT.shape[1])
-            tiled_tau_t_xtp1 =  tau_t_xtp1.repeat(1,grad_theta_tau_xtp1_MAT.shape[1])
-
-        grad_J_tau = (tiled_tau_xtp1 * grad_theta_tau_xtp1_MAT).mean(0) - (1 - alpha_t) * (tiled_tau_t_xtp1 * grad_theta_tau_xtp1_MAT).mean(0) - alpha_t * (tiled_tau_t_xt * grad_theta_tau_xt_MAT).mean(0) + v*grad_theta_tau_xt_MAT.mean(0)
-        # grad_J_v = - (2 * lam * (tau_xt.mean() - 1 - v))
-        param[1].grad = grad_J_tau
-        # vee.grad = grad_J_v
-		
-        avg_grad_J_tau.append( grad_J_tau.mean().item() )
-    vee.grad = - (2 * lam * (tau_xt.mean() - 1 - vee))
-    avg_grad_J_v = vee.grad.item()
     opt_tau.step()
     opt_vee.step()
 
-    # Do soft update on the reference network
-    tau_t_state = tau_t.state_dict()
-    tau_state = tau.state_dict()
-    for key in tau_state.keys():
-        tau_t_state[key] = 0.99 * tau_t_state[key] + 0.01 * tau_state[key]
-    tau_t.load_state_dict(tau_t_state)
-
-    return np.mean(avg_grad_J_tau), avg_grad_J_v
+    return J_tau.item(), J_v.item()
 
 
 def get_D(n_steps, qa, qf):
 	transitions, max_state = queueing.sample_nsteps_non_iid(n=n_steps, initial_state=0, qa=qa,qf=qf)
 	return transitions, max_state
 
-def estimate_stationary(D, max_state):
+def estimate_stationary(D, max_state, power_iters=50, inner_steps=500, batch_size = 128):
     X_t = torch.from_numpy(D[:, 0]).long()
     X_tp1 = torch.from_numpy(D[:, 1]).long()
 
@@ -125,20 +89,33 @@ def estimate_stationary(D, max_state):
         tau = tau.cuda()
         tau_t = tau_t.cuda()
 
-    tau_t.load_state_dict(tau.state_dict())
-
-    opt_tau = torch.optim.Adam(tau.parameters(),lr=0.01)
-    opt_vee = torch.optim.Adam([vee],lr=0.01)
-    
-
-    for epoch in range(100):
-
-        _, _ = fit_tau(X_t,X_tp1, tau, tau_t, vee, opt_tau, opt_vee,device, epoch)
-        density_ratios = []
+    opt_tau = torch.optim.Adam(tau.parameters(),lr=3e-4)
+    opt_vee = torch.optim.Adam([vee],lr=3e-4)
+    losses_tau, losses_v = [], []
+    for t in range(power_iters):
+        tau_t.load_state_dict(tau.state_dict())
+        for _ in range(inner_steps):
+            idx = torch.randint(0, X_t.shape[0], (batch_size,), device=X_t.device)
+            J_tau_item, J_v_item = fit_tau(X_t[idx],X_tp1[idx], tau, tau_t, vee, opt_tau, opt_vee, t)
+            losses_tau.append(J_tau_item)
+            losses_v.append(J_v_item)
+            with torch.no_grad():
+                vee.clamp_(min=0.0)
+    plt.plot(losses_tau, label='J_tau')
+    plt.plot(losses_v, label='J_v')
+    plt.legend()
+    plt.show()
+    density_ratios = []
+    with torch.no_grad():
         for idx in range(max_state+1):
-            density_ratios.append(tau(torch.FloatTensor([[1 if i == idx else 0 for i in range(max_state+1)]])).detach().cpu().item())
-        density_ratios = np.array(density_ratios)
-    return density_ratios/np.sum(density_ratios)
+            input_vec = torch.zeros(max_state+1)
+            input_vec[idx] = 1.0
+            input_vec = input_vec.unsqueeze(0).to(device)
+            density_ratios.append(tau(input_vec).item())
+    density_ratios = np.array(density_ratios)
+    pi = density_ratios * np.bincount(D[:,0], minlength=max_state+1)
+    pi /= pi.sum()
+    return pi
 
 if __name__ == "__main__":
     """
@@ -150,9 +127,11 @@ if __name__ == "__main__":
     qf = 0.9
     rho = (qa*(1-qf))/(qf*(1-qa))
     B = int(np.ceil(40*rho))
-    n_steps = 500
+    n_steps = 20000
+    burn_in = 5000
     D, max_state = get_D(n_steps, qa, qf)
-    D = np.array(D)
+    D = np.array(D)[burn_in:, :]
+    np.random.shuffle(D)
 
     # Estimate stationary distribution using VPM
     estimated_dist = estimate_stationary(D, max_state)
